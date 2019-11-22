@@ -7,11 +7,13 @@ import Browser.Events
 import Camera3d
 import Color exposing (Color)
 import Direction3d exposing (Direction3d)
+import Duration exposing (Duration)
 import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Illuminance
 import Length exposing (Length)
+import List.Zipper as Zipper exposing (Zipper)
 import Luminance
 import Pixels
 import Point3d
@@ -40,8 +42,18 @@ type alias Model =
     { time : Float
     , width : Float
     , height : Float
-    , dance : Dance
+    , training : Training
     }
+
+
+type Exercise
+    = Dance Routine Duration
+    | Flash String Duration
+    | Pause String
+
+
+type alias Training =
+    Zipper Exercise
 
 
 type alias Body a =
@@ -63,7 +75,15 @@ init flags =
     ( { time = 0
       , width = flags.width
       , height = flags.height
-      , dance = floss
+      , training =
+            Zipper.withDefault (Pause "Pauze!") <|
+                Zipper.fromList
+                    [ Dance floss <| Duration.seconds 6
+                    , Flash "Zwaaien met je handen!" <| Duration.milliseconds 500
+                    , Dance macarena <| Duration.seconds 15
+                    , Flash "Raak je neus aan!" <| Duration.milliseconds 200
+                    , Pause "Klaar!"
+                    ]
       }
     , Cmd.none
     )
@@ -72,20 +92,51 @@ init flags =
 type Msg
     = Diff Float
     | Resize Int Int
-    | SetDance Dance
+
+
+cycleTraining : Training -> Training
+cycleTraining training =
+    case Zipper.next training of
+        Nothing ->
+            Zipper.first training
+
+        Just training_ ->
+            training_
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Diff diff ->
-            pure { model | time = model.time + diff }
+        Diff diff_msec ->
+            let
+                time =
+                    model.time + diff_msec
+
+                exercise =
+                    Zipper.current model.training
+
+                proceedAfter duration =
+                    if time > Duration.inMilliseconds duration then
+                        { model | time = 0, training = cycleTraining model.training }
+
+                    else
+                        { model | time = time }
+
+                model_ =
+                    case exercise of
+                        Pause _ ->
+                            { model | time = time }
+
+                        Dance _ duration ->
+                            proceedAfter duration
+
+                        Flash _ duration ->
+                            proceedAfter duration
+            in
+            pure model_
 
         Resize width height ->
             pure { model | width = toFloat width, height = toFloat height }
-
-        SetDance dance_ ->
-            pure { model | dance = dance_ }
 
 
 pure : a -> ( a, Cmd msg )
@@ -107,14 +158,30 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
+    let
+        exercise =
+            Zipper.current model.training
+    in
     Html.div
         [ Html.Attributes.style "position" "relative" ]
-        [ viewDancer model
+        [ case exercise of
+            Dance routine _ ->
+                viewDancer routine model.time model.width model.height
+
+            Flash text _ ->
+                viewText text
+
+            Pause text ->
+                viewText text
         ]
 
 
-viewDancer : Model -> Html msg
-viewDancer model =
+viewText text =
+    Html.h1 [] [ Html.text text ]
+
+
+viewDancer : Routine -> Float -> Float -> Float -> Html msg
+viewDancer routine time width height =
     let
         viewpoint =
             Viewpoint3d.lookAt
@@ -144,22 +211,22 @@ viewDancer model =
     in
     Scene3d.render [ Scene3d.clearColor Color.darkPurple ]
         { camera = camera
-        , width = Pixels.pixels model.width
-        , height = Pixels.pixels model.height
+        , width = Pixels.pixels width
+        , height = Pixels.pixels height
         , ambientLighting = Just ambientLighting
         , lights = Scene3d.oneLight sunlight { castsShadows = False }
         , exposure = Scene3d.Exposure.fromMaxLuminance (Luminance.nits 10000)
         , whiteBalance = Scene3d.Chromaticity.daylight
         }
-        [ dance model head Head
-        , dance model torso Torso
-        , dance model arm LeftArm
+        [ move routine time head Head
+        , move routine time torso Torso
+        , move routine time arm LeftArm
             |> Drawable.translateIn Direction3d.negativeX armOffset
-        , dance model arm RightArm
+        , move routine time arm RightArm
             |> Drawable.translateIn Direction3d.x armOffset
-        , dance model leg LeftLeg
+        , move routine time leg LeftLeg
             |> Drawable.translateIn Direction3d.negativeX legOffset
-        , dance model leg RightLeg
+        , move routine time leg RightLeg
             |> Drawable.translateIn Direction3d.x legOffset
         ]
 
@@ -243,11 +310,11 @@ var =
 
 
 
--- DANCE
+-- DANCE (ROUTINE)
 
 
-type Dance
-    = Dance Float (Body (List Move))
+type Routine
+    = Routine Float (Body (List Move))
 
 
 type Part
@@ -281,23 +348,23 @@ part part_ body =
             body.rightLeg
 
 
-dance : Model -> Drawable () -> Part -> Drawable ()
-dance model drawable part_ =
-    case model.dance of
-        Dance stepDuration dance_ ->
+move : Routine -> Float -> Drawable () -> Part -> Drawable ()
+move moves time drawable body =
+    case moves of
+        Routine stepDuration sequence ->
             let
                 progress =
-                    model.time / stepDuration
+                    time / stepDuration
 
                 start =
                     floor progress
 
-                apply move =
-                    curve start (progress - toFloat start) move.steps
+                apply motion =
+                    curve start (progress - toFloat start) motion.steps
                         |> Angle.degrees
-                        |> Drawable.rotateAround move.axis
+                        |> Drawable.rotateAround motion.axis
             in
-            List.foldl apply drawable (part part_ dance_)
+            List.foldl apply drawable (part body sequence)
 
 
 type alias Move =
@@ -306,9 +373,9 @@ type alias Move =
     }
 
 
-floss : Dance
+floss : Routine
 floss =
-    Dance 350
+    Routine 350
         { head =
             [ { steps = [ 15, -10, 10, -15, 10, -10 ], axis = shouldersZ } ]
         , torso =
@@ -328,7 +395,7 @@ floss =
         }
 
 
-macarena : Dance
+macarena : Routine
 macarena =
     let
         shake vigor =
@@ -340,7 +407,7 @@ macarena =
                     , [ 0, 0, 0, 0, 1, -1, 1, -1 ]
                     ]
     in
-    Dance 280
+    Routine 280
         { head =
             [ { steps = shake 5, axis = shouldersZ } ]
         , torso =

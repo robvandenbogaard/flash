@@ -18,7 +18,8 @@
             "ianmackenzie/elm-geometry": "2.0.0",
             "ianmackenzie/elm-geometry-linear-algebra-interop": "2.0.0",
             "ianmackenzie/elm-triangular-mesh": "1.0.2",
-            "ianmackenzie/elm-units": "2.2.0"
+            "ianmackenzie/elm-units": "2.2.0",
+            "wernerdegroot/listzipper": "4.0.0"
         },
         "indirect": {
             "elm/json": "1.1.3",
