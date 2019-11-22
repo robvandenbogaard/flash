@@ -1,0 +1,6 @@
+package-lock.json
+elm-stuff
+node_modules
+tmp
+
+build/*
