@@ -15,4 +15,4 @@ bin/elm:
 	mv elm bin
 
 elm:
-	bin/elm make src/flash.elm        ${ELM_MAKE_FLAGS} --output build/flash.html
+	bin/elm make src/Flash.elm        ${ELM_MAKE_FLAGS} --output build/elm.js
