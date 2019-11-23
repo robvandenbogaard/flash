@@ -8,10 +8,13 @@ import Camera3d
 import Color exposing (Color)
 import Direction3d exposing (Direction3d)
 import Duration exposing (Duration)
+import File exposing (File)
+import File.Select
 import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Illuminance
+import Json.Decode as Decode
 import Length exposing (Length)
 import List.Zipper as Zipper exposing (Zipper)
 import Luminance
@@ -25,6 +28,7 @@ import Scene3d.Exposure
 import Scene3d.Light
 import Scene3d.Mesh as Mesh exposing (Mesh)
 import Scene3d.Shape as Shape
+import Task
 import Viewpoint3d
 
 
@@ -43,11 +47,17 @@ type alias Model =
     , width : Float
     , height : Float
     , training : Training
+    , paused : Bool
     }
 
 
+type alias Music =
+    String
+
+
 type Exercise
-    = Dance Routine Duration
+    = Dance Routine Music Duration
+    | Prepare
     | Flash String Duration
     | Pause String
 
@@ -78,12 +88,19 @@ init flags =
       , training =
             Zipper.withDefault (Pause "Pauze!") <|
                 Zipper.fromList
-                    [ Dance floss <| Duration.seconds 6
-                    , Flash "Zwaaien met je handen!" <| Duration.milliseconds 500
-                    , Dance macarena <| Duration.seconds 15
-                    , Flash "Raak je neus aan!" <| Duration.milliseconds 200
+                    [ Dance floss "Mamboxe loop - Dudu Capoeira.mp3" <| Duration.seconds 4
+                    , Prepare
+                    , Flash "boom" <| Duration.milliseconds 500
+                    , Flash "roos" <| Duration.milliseconds 500
+                    , Flash "vis" <| Duration.milliseconds 500
+                    , Flash "Zwaaien met je handen!" <| Duration.milliseconds 1000
+                    , Dance macarena "Coco Daqui loop - Dudu Capoeira.mp3" <| Duration.seconds 30
+                    , Prepare
+                    , Flash "Raak je neus aan!" <| Duration.milliseconds 700
+                    , Dance floss "Pantanal loop - Azymuth (compressed).mp3" <| Duration.seconds 4
                     , Pause "Klaar!"
                     ]
+      , paused = False
       }
     , Cmd.none
     )
@@ -92,6 +109,9 @@ init flags =
 type Msg
     = Diff Float
     | Resize Int Int
+    | Key String
+    | TrainingSelected File
+    | TrainingLoaded String
 
 
 cycleTraining : Training -> Training
@@ -104,13 +124,21 @@ cycleTraining training =
             training_
 
 
+noTraining =
+    Zipper.withDefault (Pause "Press \"enter\" to load a training file") Nothing
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Diff diff_msec ->
             let
                 time =
-                    model.time + diff_msec
+                    if model.paused then
+                        model.time
+
+                    else
+                        model.time + diff_msec
 
                 exercise =
                     Zipper.current model.training
@@ -127,7 +155,10 @@ update msg model =
                         Pause _ ->
                             { model | time = time }
 
-                        Dance _ duration ->
+                        Prepare ->
+                            proceedAfter (Duration.seconds 2)
+
+                        Dance _ _ duration ->
                             proceedAfter duration
 
                         Flash _ duration ->
@@ -138,10 +169,60 @@ update msg model =
         Resize width height ->
             pure { model | width = toFloat width, height = toFloat height }
 
+        Key key ->
+            case key of
+                "Enter" ->
+                    ( model, File.Select.file [ "text/plain" ] TrainingSelected )
+
+                " " ->
+                    ( { model | paused = not model.paused }, Cmd.none )
+
+                ">" ->
+                    ( { model | training = cycleTraining model.training, time = 0 }, Cmd.none )
+
+                "<" ->
+                    let
+                        training =
+                            if Zipper.isFirst model.training then
+                                Zipper.last model.training
+
+                            else
+                                Zipper.withDefault (Pause "Oops!") <|
+                                    Zipper.previous model.training
+                    in
+                    ( { model | training = training, time = 0 }, Cmd.none )
+
+                "s" ->
+                    ( { model | training = noTraining }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        TrainingSelected file ->
+            ( model, Task.perform TrainingLoaded (File.toString file) )
+
+        TrainingLoaded content ->
+            let
+                training =
+                    importTraining content
+            in
+            ( { model | training = training, time = 0 }, Cmd.none )
+
 
 pure : a -> ( a, Cmd msg )
 pure a =
     ( a, Cmd.none )
+
+
+importTraining : String -> Training
+importTraining content =
+    Zipper.withDefault (Pause "Could not load training") <|
+        Zipper.fromList [ Flash "Training 2" <| Duration.seconds 5, Prepare, Pause "Fin" ]
+
+
+keyDecoder : Decode.Decoder String
+keyDecoder =
+    Decode.field "key" Decode.string
 
 
 subscriptions : Model -> Sub Msg
@@ -149,6 +230,7 @@ subscriptions model =
     Sub.batch
         [ Browser.Events.onAnimationFrameDelta Diff
         , Browser.Events.onResize Resize
+        , Browser.Events.onKeyPress (Decode.map Key keyDecoder)
         ]
 
 
@@ -163,21 +245,44 @@ view model =
             Zipper.current model.training
     in
     Html.div
-        [ Html.Attributes.style "position" "relative" ]
-        [ case exercise of
-            Dance routine _ ->
-                viewDancer routine model.time model.width model.height
+        []
+        (if model.paused then
+            [ viewText "||" ]
 
-            Flash text _ ->
-                viewText text
+         else
+            case exercise of
+                Dance routine music _ ->
+                    [ viewDancer routine model.time model.width model.height
+                    , viewMusic music
+                    ]
 
-            Pause text ->
-                viewText text
-        ]
+                Flash text _ ->
+                    [ viewText text ]
+
+                Prepare ->
+                    [ viewText "!" ]
+
+                Pause text ->
+                    [ viewText text ]
+        )
 
 
 viewText text =
-    Html.h1 [] [ Html.text text ]
+    Html.h1
+        [ Html.Attributes.style "font-size" "12vh"
+        , Html.Attributes.style "font-weight" "normal"
+        ]
+        [ Html.text text ]
+
+
+viewMusic music =
+    Html.audio
+        [ Html.Attributes.src ("music/" ++ music)
+        , Html.Attributes.autoplay True
+        , Html.Attributes.controls False
+        , Html.Attributes.loop True
+        ]
+        []
 
 
 viewDancer : Routine -> Float -> Float -> Float -> Html msg
@@ -209,7 +314,7 @@ viewDancer routine time width height =
                 , zenithLuminance = Luminance.nits 5000
                 }
     in
-    Scene3d.render [ Scene3d.clearColor Color.darkPurple ]
+    Scene3d.render [ Scene3d.clearColor (Color.hsl 200 0.5 0.5) ]
         { camera = camera
         , width = Pixels.pixels width
         , height = Pixels.pixels height
