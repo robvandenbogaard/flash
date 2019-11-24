@@ -56,8 +56,12 @@ type alias Music =
     String
 
 
+type alias Speed =
+    Float
+
+
 type Exercise
-    = Dance Duration Routine Music
+    = Dance Duration Routine Speed Music
     | Prepare
     | Flash Duration String
     | Pause String
@@ -146,7 +150,7 @@ update msg model =
                         Prepare ->
                             proceedAfter (Duration.seconds 2)
 
-                        Dance duration _ _ ->
+                        Dance duration _ _ _ ->
                             proceedAfter duration
 
                         Flash duration _ ->
@@ -213,6 +217,17 @@ parseDuration default =
         ]
 
 
+parseSpeed default =
+    Parser.oneOf
+        [ Parser.succeed identity
+            |. Parser.token "snelheid"
+            |. Parser.spaces
+            |= Parser.float
+            |. Parser.spaces
+        , Parser.succeed default
+        ]
+
+
 parseRoutine =
     Parser.oneOf
         [ Parser.succeed floss
@@ -230,6 +245,7 @@ parseDance =
         |. Parser.spaces
         |= parseRoutine
         |. Parser.spaces
+        |= parseSpeed 1.0
         |. Parser.token "op muziek"
         |. Parser.spaces
         |. Parser.symbol "\""
@@ -390,8 +406,8 @@ view model =
 
          else
             case exercise of
-                Dance _ routine music ->
-                    [ viewDancer routine model.time model.width model.height
+                Dance _ routine speed music ->
+                    [ viewDancer routine (model.time * speed) model.width model.height
                     , viewMusic music
                     ]
 

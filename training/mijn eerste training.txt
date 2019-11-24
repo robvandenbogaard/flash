@@ -1,10 +1,10 @@
-Flits 6 sec: Poezieflitsen
+Flits 4 sec: Poezieflitsen
 Bewegen: floss op muziek "Samba reggae roots loop - Dudu Capoeira.mp3"
 Let op!
-Flits: Ik sta voor 't raam, en hoor een melodie
-Flits: Die in me dringt en mijn hart bersten doet:
-Flits: Hoor hoe hiernaast een kind piano speelt -
-Flits:
+Flits 4 sec: Ik sta voor 't raam, en hoor een melodie
+Flits 4 sec: Die in me dringt en mijn hart bersten doet:
+Flits 4 sec: Hoor hoe hiernaast een kind piano speelt -
+Flits 1 sec:
 Flits: door Martinus Nijhoff
 Bewegen 10 sec: macarena op muziek "Coco Daqui loop - Dudu Capoeira.mp3"
 Let op!
@@ -12,13 +12,13 @@ Flits: Slaap als een reus
 Flits: slaap als een roos
 Flits: slaap als een reus van een roos
 Flits:
-Flits 0.5 sec: reuzeke
-Flits 0.5 sec: rozeke
-Flits 0.5 sec: zoetekoeksdozeke
-Flits:
+Flits 1 sec: reuzeke
+Flits 1 sec: rozeke
+Flits: zoetekoeksdozeke
+Flits 1 sec:
 Flits: doe de deur dicht van de doos
 Flits: Ik slaap
-Flits:
+Flits 1 sec:
 Flits: door Paul van Ostaijen
 Bewegen: floss op muziek "Capuxe loop - Dudu Capoeira.mp3"
 Let op!
@@ -26,8 +26,8 @@ Flits: Verleen je hart een extra kamer.
 Flits: Zoals Erasmus schreef:
 Flits: ruimte scheidt de lichamen
 Flits: maar niet de geesten
-Flits:
+Flits 1 sec:
 Flits: door Anne Vegter
-Flits:
+Flits 1 sec:
 Flits: Klaar!
-Bewegen 300 sec: floss op muziek "Samba reggae roots loop - Dudu Capoeira.mp3"
+Bewegen 300 sec: floss snelheid 0.932 op muziek "Samba reggae roots loop - Dudu Capoeira.mp3"
