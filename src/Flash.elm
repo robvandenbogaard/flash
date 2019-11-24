@@ -18,6 +18,7 @@ import Json.Decode as Decode
 import Length exposing (Length)
 import List.Zipper as Zipper exposing (Zipper)
 import Luminance
+import Parser exposing ((|.), (|=), Parser)
 import Pixels
 import Point3d
 import Quantity
@@ -56,9 +57,9 @@ type alias Music =
 
 
 type Exercise
-    = Dance Routine Music Duration
+    = Dance Duration Routine Music
     | Prepare
-    | Flash String Duration
+    | Flash Duration String
     | Pause String
 
 
@@ -86,20 +87,7 @@ init flags =
       , width = flags.width
       , height = flags.height
       , training =
-            Zipper.withDefault (Pause "Pauze!") <|
-                Zipper.fromList
-                    [ Dance floss "Mamboxe loop - Dudu Capoeira.mp3" <| Duration.seconds 4
-                    , Prepare
-                    , Flash "boom" <| Duration.milliseconds 500
-                    , Flash "roos" <| Duration.milliseconds 500
-                    , Flash "vis" <| Duration.milliseconds 500
-                    , Flash "Zwaaien met je handen!" <| Duration.milliseconds 1000
-                    , Dance macarena "Coco Daqui loop - Dudu Capoeira.mp3" <| Duration.seconds 30
-                    , Prepare
-                    , Flash "Raak je neus aan!" <| Duration.milliseconds 700
-                    , Dance floss "Pantanal loop - Azymuth (compressed).mp3" <| Duration.seconds 4
-                    , Pause "Klaar!"
-                    ]
+            Zipper.singleton (Pause "Toets enter om een training te laden")
       , paused = False
       }
     , Cmd.none
@@ -158,10 +146,10 @@ update msg model =
                         Prepare ->
                             proceedAfter (Duration.seconds 2)
 
-                        Dance _ _ duration ->
+                        Dance duration _ _ ->
                             proceedAfter duration
 
-                        Flash _ duration ->
+                        Flash duration _ ->
                             proceedAfter duration
             in
             pure model_
@@ -214,10 +202,145 @@ pure a =
     ( a, Cmd.none )
 
 
+parseDuration default =
+    Parser.oneOf
+        [ Parser.succeed Duration.seconds
+            |. Parser.spaces
+            |= Parser.float
+            |. Parser.spaces
+            |. Parser.token "sec"
+        , Parser.succeed default
+        ]
+
+
+parseRoutine =
+    Parser.oneOf
+        [ Parser.succeed floss
+            |. Parser.token "floss"
+        , Parser.succeed macarena
+            |. Parser.token "macarena"
+        ]
+
+
+parseDance =
+    Parser.succeed Dance
+        |. Parser.token "Bewegen"
+        |= parseDuration (Duration.seconds 6)
+        |. Parser.symbol ":"
+        |. Parser.spaces
+        |= parseRoutine
+        |. Parser.spaces
+        |. Parser.token "op muziek"
+        |. Parser.spaces
+        |. Parser.symbol "\""
+        |= Parser.getChompedString (Parser.chompUntil "\"")
+
+
+parsePrepare =
+    Parser.succeed Prepare
+        |. Parser.token "Let op!"
+
+
+parseText =
+    Parser.getChompedString <|
+        Parser.succeed ()
+            |. Parser.chompUntilEndOr "\n"
+
+
+parseFlash =
+    Parser.succeed Flash
+        |. Parser.token "Flits"
+        |= parseDuration (Duration.seconds 2)
+        |. Parser.symbol ":"
+        |= parseText
+
+
+parsePause =
+    Parser.succeed Pause
+        |. Parser.token "Pauze"
+        |. Parser.symbol ":"
+        |= parseText
+
+
+parseExercise : Parser Exercise
+parseExercise =
+    Parser.oneOf
+        [ parseDance
+        , parsePrepare
+        , parseFlash
+        , parsePause
+        ]
+
+
+problemToString problem =
+    case problem of
+        Parser.Expecting s ->
+            "Verwacht " ++ s
+
+        Parser.ExpectingInt ->
+            "Verwacht een heel getal"
+
+        Parser.ExpectingHex ->
+            "Verwacht een hexadecimaal getal"
+
+        Parser.ExpectingOctal ->
+            "Verwacht een octaal getal"
+
+        Parser.ExpectingBinary ->
+            "Verwacht een binair getal"
+
+        Parser.ExpectingFloat ->
+            "Verwacht een floating point-getal"
+
+        Parser.ExpectingNumber ->
+            "Verwacht een getal"
+
+        Parser.ExpectingVariable ->
+            "Verwacht een variabele"
+
+        Parser.ExpectingSymbol s ->
+            "Verwacht symbool " ++ s
+
+        Parser.ExpectingKeyword s ->
+            "Verwacht keyword " ++ s
+
+        Parser.ExpectingEnd ->
+            "Verwacht einde"
+
+        Parser.UnexpectedChar ->
+            "Onverwacht karakter"
+
+        Parser.Problem s ->
+            "Probleem " ++ s
+
+        Parser.BadRepeat ->
+            "Slechte herhaling"
+
+
+importExercise : String -> Exercise
+importExercise line =
+    case Parser.run parseExercise line of
+        Ok exercise ->
+            exercise
+
+        Err [] ->
+            Pause ("Probleem in regel: " ++ line)
+
+        Err ({ problem, col } :: _) ->
+            Pause ("Probleem \"" ++ problemToString problem ++ "\" op positie " ++ String.fromInt col ++ " in regel: " ++ line)
+
+
 importTraining : String -> Training
 importTraining content =
-    Zipper.withDefault (Pause "Could not load training") <|
-        Zipper.fromList [ Flash "Training 2" <| Duration.seconds 5, Prepare, Pause "Fin" ]
+    let
+        lines =
+            String.lines content
+
+        training =
+            Zipper.fromList <|
+                List.map importExercise lines
+    in
+    Zipper.withDefault (Pause "Kon training niet laden") training
 
 
 keyDecoder : Decode.Decoder String
@@ -251,12 +374,12 @@ view model =
 
          else
             case exercise of
-                Dance routine music _ ->
+                Dance _ routine music ->
                     [ viewDancer routine model.time model.width model.height
                     , viewMusic music
                     ]
 
-                Flash text _ ->
+                Flash _ text ->
                     [ viewText text ]
 
                 Prepare ->
@@ -268,8 +391,16 @@ view model =
 
 
 viewText text =
+    let
+        size =
+            if String.length text < 35 then
+                "12vh"
+
+            else
+                "7vh"
+    in
     Html.h1
-        [ Html.Attributes.style "font-size" "12vh"
+        [ Html.Attributes.style "font-size" size
         , Html.Attributes.style "font-weight" "normal"
         ]
         [ Html.text text ]
