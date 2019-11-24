@@ -275,46 +275,46 @@ parseExercise =
 problemToString problem =
     case problem of
         Parser.Expecting s ->
-            "Verwacht " ++ s
+            "Ik verwachtte \"" ++ s ++ "\""
 
         Parser.ExpectingInt ->
-            "Verwacht een heel getal"
+            "Ik verwachtte een heel getal"
 
         Parser.ExpectingHex ->
-            "Verwacht een hexadecimaal getal"
+            "Ik verwachtte een hexadecimaal getal"
 
         Parser.ExpectingOctal ->
-            "Verwacht een octaal getal"
+            "Ik verwachtte een octaal getal"
 
         Parser.ExpectingBinary ->
-            "Verwacht een binair getal"
+            "Ik verwachtte een binair getal"
 
         Parser.ExpectingFloat ->
-            "Verwacht een floating point-getal"
+            "Ik verwachtte een floating point-getal"
 
         Parser.ExpectingNumber ->
-            "Verwacht een getal"
+            "Ik verwachtte een getal"
 
         Parser.ExpectingVariable ->
-            "Verwacht een variabele"
+            "Ik verwachtte een variabele"
 
         Parser.ExpectingSymbol s ->
-            "Verwacht symbool " ++ s
+            "Ik verwachtte het symbool \"" ++ s ++ "\""
 
         Parser.ExpectingKeyword s ->
-            "Verwacht keyword " ++ s
+            "Ik verwachtte het woord \"" ++ s ++ "\""
 
         Parser.ExpectingEnd ->
-            "Verwacht einde"
+            "Ik verwachtte het einde hier"
 
         Parser.UnexpectedChar ->
-            "Onverwacht karakter"
+            "Er staat een onverwacht karakter"
 
         Parser.Problem s ->
-            "Probleem " ++ s
+            "Er is een onverwacht probleem: " ++ s
 
         Parser.BadRepeat ->
-            "Slechte herhaling"
+            "De herhaling klopt niet"
 
 
 importExercise : String -> Exercise
@@ -327,20 +327,36 @@ importExercise line =
             Pause ("Probleem in regel: " ++ line)
 
         Err ({ problem, col } :: _) ->
-            Pause ("Probleem \"" ++ problemToString problem ++ "\" op positie " ++ String.fromInt col ++ " in regel: " ++ line)
+            let
+                linespec =
+                    case String.trim line of
+                        "" ->
+                            " van de lege regel"
+
+                        _ ->
+                            " in regel: " ++ line
+            in
+            Pause ("Oeps! " ++ problemToString problem ++ " op positie " ++ String.fromInt col ++ linespec)
 
 
 importTraining : String -> Training
 importTraining content =
     let
+        f s =
+            case String.trim s of
+                "" ->
+                    Nothing
+
+                ts ->
+                    Just ts
+
         lines =
-            String.lines content
+            List.filterMap f <| String.lines content
 
         training =
-            Zipper.fromList <|
-                List.map importExercise lines
+            Zipper.fromList <| List.map importExercise lines
     in
-    Zipper.withDefault (Pause "Kon training niet laden") training
+    Zipper.withDefault (Pause "De training kon niet geladen worden / lege training") training
 
 
 keyDecoder : Decode.Decoder String
