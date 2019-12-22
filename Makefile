@@ -16,3 +16,4 @@ bin/elm:
 
 elm:
 	bin/elm make src/Flash.elm        ${ELM_MAKE_FLAGS} --output build/elm.js
+	bin/elm make src/Mannequin.elm    ${ELM_MAKE_FLAGS} --output build/mannequin.js
