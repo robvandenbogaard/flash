@@ -50,13 +50,21 @@ type alias Model =
     }
 
 
-type alias Body a =
-    { head : a
-    , torso : a
-    , leftArm : a
-    , rightArm : a
-    , leftLeg : a
-    , rightLeg : a
+type alias OpposedJoints a =
+    { shoulder : a
+    , elbow : a
+    , wrist : a
+    , hip : a
+    , knee : a
+    , ankle : a
+    }
+
+
+type alias Joints a =
+    { neck : a
+    , spine : a
+    , left : OpposedJoints a
+    , right : OpposedJoints a
     }
 
 
@@ -141,6 +149,39 @@ viewDancer routine time width height =
                 , chromaticity = Scene3d.Chromaticity.daylight
                 , zenithLuminance = Luminance.nits 5000
                 }
+
+        ( step, moves ) =
+            case routine of
+                Routine s m ->
+                    ( s, m )
+
+        leg joints =
+            move time step joints.hip <|
+                Drawable.group
+                    [ upperLeg
+                    , move time step joints.knee <|
+                        Drawable.group
+                            [ lowerLeg
+                            , move time step joints.ankle foot
+                            ]
+                    ]
+
+        arm joints =
+            move time step joints.shoulder <|
+                Drawable.group
+                    [ upperArm
+                    , move time step joints.elbow <|
+                        Drawable.group
+                            [ lowerArm
+                            , move time step joints.wrist hand
+                            ]
+                    ]
+
+        left =
+            Drawable.translateIn Direction3d.negativeX
+
+        right =
+            Drawable.translateIn Direction3d.x
     in
     Scene3d.render [ Scene3d.clearColor (Color.hsl 200 0.5 0.5) ]
         { camera = camera
@@ -151,41 +192,72 @@ viewDancer routine time width height =
         , exposure = Scene3d.Exposure.fromMaxLuminance (Luminance.nits 10000)
         , whiteBalance = Scene3d.Chromaticity.daylight
         }
-        [ move routine time head Head
-        , move routine time torso Torso
-        , move routine time arm LeftArm
-            |> Drawable.translateIn Direction3d.negativeX armOffset
-        , move routine time arm RightArm
-            |> Drawable.translateIn Direction3d.x armOffset
-        , move routine time leg LeftLeg
-            |> Drawable.translateIn Direction3d.negativeX legOffset
-        , move routine time leg RightLeg
-            |> Drawable.translateIn Direction3d.x legOffset
+        [ Drawable.group
+            [ torso
+            , move time step moves.neck head
+            , move time step moves.spine <|
+                Drawable.group
+                    [ abdomen
+                    , leg moves.left |> left legOffset
+                    , leg moves.right |> right legOffset
+                    ]
+            , arm moves.left |> left armOffset
+            , arm moves.right |> right armOffset
+            ]
         ]
 
 
 head : Drawable a
 head =
-    bodyPart <| Shape.sphere { radius = var.head.radius, subdivisions = 72 }
+    bodyPart (Shape.sphere { radius = var.head.radius, subdivisions = 72 })
+        |> Drawable.translateIn Direction3d.y var.head.radius
 
 
-leg : Drawable a
-leg =
+upperLeg : Drawable a
+upperLeg =
     pill var.leg.upper.radius var.leg.upper.length
         |> Drawable.translateIn Direction3d.negativeY
-            (Quantity.sum [ var.head.radius, var.torso.length ])
+            (Quantity.sum [ var.torso.length, var.abdomen.length ])
 
 
-arm : Drawable a
-arm =
+lowerLeg : Drawable a
+lowerLeg =
+    pill var.leg.lower.radius var.leg.lower.length
+        |> Drawable.translateIn Direction3d.negativeY var.leg.upper.length
+
+
+foot : Drawable a
+foot =
+    pill var.foot.radius var.foot.length
+        |> Drawable.translateIn Direction3d.negativeY var.leg.lower.length
+
+
+upperArm : Drawable a
+upperArm =
     pill var.arm.upper.radius var.arm.upper.length
-        |> Drawable.translateIn Direction3d.negativeY var.head.radius
+
+
+lowerArm : Drawable a
+lowerArm =
+    pill var.arm.lower.radius var.arm.lower.length
+        |> Drawable.translateIn Direction3d.negativeY var.arm.upper.length
+
+
+hand : Drawable a
+hand =
+    pill var.hand.radius var.hand.length
+        |> Drawable.translateIn Direction3d.negativeY var.arm.lower.length
 
 
 torso : Drawable a
 torso =
     pill var.torso.radius var.torso.length
-        |> Drawable.translateIn Direction3d.negativeY var.head.radius
+
+
+abdomen : Drawable a
+abdomen =
+    pill var.abdomen.radius var.abdomen.length
+        |> Drawable.translateIn Direction3d.negativeY var.torso.length
 
 
 pill : Length -> Length -> Drawable a
@@ -232,11 +304,16 @@ var =
         { upper = { length = Length.meters 0.2, radius = Length.meters 0.03 }
         , lower = { length = Length.meters 0.2, radius = Length.meters 0.035 }
         }
+    , hand =
+        { length = Length.meters 0.08, radius = Length.meters 0.035 }
     , leg =
         { upper = { length = Length.meters 0.32, radius = Length.meters 0.06 }
         , lower = { length = Length.meters 0.34, radius = Length.meters 0.05 }
         }
-    , torso = { length = Length.meters 0.52, radius = Length.meters 0.15 }
+    , foot =
+        { length = Length.meters 0.37, radius = Length.meters 0.06 }
+    , torso = { length = Length.meters 0.32, radius = Length.meters 0.15 }
+    , abdomen = { length = Length.meters 0.2, radius = Length.meters 0.15 }
     , movement = Length.meters 0.85
     }
 
@@ -246,57 +323,24 @@ var =
 
 
 type Routine
-    = Routine Float (Body (List Move))
+    = Routine Float (Joints (List Move))
 
 
-type Part
-    = Head
-    | Torso
-    | LeftArm
-    | RightArm
-    | LeftLeg
-    | RightLeg
+move : Float -> Float -> List Move -> Drawable () -> Drawable ()
+move time step moves drawable =
+    let
+        progress =
+            time / step
 
+        start =
+            floor progress
 
-part : Part -> Body a -> a
-part part_ body =
-    case part_ of
-        Head ->
-            body.head
-
-        Torso ->
-            body.torso
-
-        LeftArm ->
-            body.leftArm
-
-        RightArm ->
-            body.rightArm
-
-        LeftLeg ->
-            body.leftLeg
-
-        RightLeg ->
-            body.rightLeg
-
-
-move : Routine -> Float -> Drawable () -> Part -> Drawable ()
-move moves time drawable body =
-    case moves of
-        Routine stepDuration sequence ->
-            let
-                progress =
-                    time / stepDuration
-
-                start =
-                    floor progress
-
-                apply motion =
-                    curve start (progress - toFloat start) motion.steps
-                        |> Angle.degrees
-                        |> Drawable.rotateAround motion.axis
-            in
-            List.foldl apply drawable (part body sequence)
+        apply motion =
+            curve start (progress - toFloat start) motion.steps
+                |> Angle.degrees
+                |> Drawable.rotateAround motion.axis
+    in
+    List.foldl apply drawable moves
 
 
 type alias Move =
@@ -308,104 +352,32 @@ type alias Move =
 floss : Routine
 floss =
     Routine 350
-        { head =
+        { neck =
             [ { steps = [ 15, -10, 10, -15, 10, -10 ], axis = shouldersZ } ]
-        , torso =
+        , spine =
             [ { steps = [ -5, 5 ], axis = hips } ]
-        , leftArm =
-            [ { steps = [ 10, -10 ], axis = Axis3d.z }
-            , { steps = [ -15, -15, 15 ], axis = Axis3d.x }
-            ]
-        , rightArm =
-            [ { steps = [ 10, -10 ], axis = Axis3d.z }
-            , { steps = [ -15, -15, 15 ], axis = Axis3d.x }
-            ]
-        , leftLeg =
-            [ { steps = [ 5, -5 ], axis = feet } ]
-        , rightLeg =
-            [ { steps = [ 5, -5 ], axis = feet } ]
-        }
-
-
-macarena : Routine
-macarena =
-    let
-        shake vigor =
-            List.map ((*) vigor) <|
-                List.concat
-                    [ [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                    , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                    , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                    , [ 0, 0, 0, 0, 1, -1, 1, -1 ]
-                    ]
-    in
-    Routine 280
-        { head =
-            [ { steps = shake 5, axis = shouldersZ } ]
-        , torso =
-            [ { steps = shake 10, axis = hips } ]
-        , leftArm =
-            [ { steps =
-                    List.concat
-                        [ [ 0, 0, 0, 0, -5, 0, 0, 0 ]
-                        , [ -15, -15, -15, -15, 30, 30, 30, 30 ]
-                        , [ 0, 0, 0, 0, 30, 30, 30, 30 ]
-                        , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        ]
-              , axis = shouldersZ
-              }
-            , { steps =
-                    List.concat
-                        [ [ 0, 0, 0, 0, -90, -90, -90, -90 ]
-                        , [ -95, -90, -90, -90, -105, -105, -105, -105 ]
-                        , [ -150, -150, -150, -150, -60, -60, -60, -60 ]
-                        , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        ]
-              , axis = shouldersX
-              }
-            , { steps =
-                    List.concat
-                        [ [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        , [ 10, 10, 10, 10, 10, -10, 10, -10 ]
-                        ]
-              , axis = hips
-              }
-            ]
-        , rightArm =
-            [ { steps =
-                    List.concat
-                        [ [ 0, 0, 0, 0, 0, 0, 5, 0, 0, 0 ]
-                        , [ 15, 15, 15, 15, -30, -30, -30, -30 ]
-                        , [ 0, 0, 0, 0, -30, -30, -30, -30 ]
-                        , [ 0, 0, 0, 0, 0, 0 ]
-                        ]
-              , axis = shouldersZ
-              }
-            , { steps =
-                    List.concat
-                        [ [ 0, 0, 0, 0, 0, 0, -90, -90, -90, -90 ]
-                        , [ -95, -90, -90, -90, -105, -105, -105, -105 ]
-                        , [ -150, -150, -150, -150, -60, -60, -60, -60 ]
-                        , [ 0, 0, 0, 0, 0, 0 ]
-                        ]
-              , axis = shouldersX
-              }
-            , { steps =
-                    List.concat
-                        [ [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        , [ 0, 0, 0, 0, 0, 0, 0, 0 ]
-                        , [ -10, -10, -10, -10, 10, -10 ]
-                        ]
-              , axis = hips
-              }
-            ]
-        , leftLeg =
-            [ { steps = shake -5, axis = feet } ]
-        , rightLeg =
-            [ { steps = shake -5, axis = feet } ]
+        , left =
+            { shoulder =
+                [ { steps = [ 10, -10 ], axis = Axis3d.z }
+                , { steps = [ -15, -15, 15 ], axis = Axis3d.x }
+                ]
+            , elbow = []
+            , wrist = []
+            , hip = [ { steps = [ 5, -5 ], axis = feet } ]
+            , knee = []
+            , ankle = []
+            }
+        , right =
+            { shoulder =
+                [ { steps = [ 10, -10 ], axis = Axis3d.z }
+                , { steps = [ -15, -15, 15 ], axis = Axis3d.x }
+                ]
+            , elbow = []
+            , wrist = []
+            , hip = [ { steps = [ 5, -5 ], axis = feet } ]
+            , knee = []
+            , ankle = []
+            }
         }
 
 
