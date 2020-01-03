@@ -28,7 +28,7 @@ import Scene3d.Drawable as Drawable exposing (Drawable, Material)
 import Scene3d.Exposure
 import Scene3d.Light
 import Scene3d.Mesh as Mesh exposing (Mesh)
-import Scene3d.Shape as Shape
+import Shape
 import Task
 import Viewpoint3d
 
@@ -93,12 +93,24 @@ init flags =
       , height = flags.height
       , parts =
             { head =
-                bodyPart (Shape.sphere { radius = var.head.radius, subdivisions = 72 })
-                    |> Drawable.translateIn Direction3d.y var.head.radius
+                Drawable.group
+                    [ pill var.head.radius var.head.length
+                        |> Drawable.translateIn Direction3d.y var.head.length
+                    , bodyPart (Shape.sphere { radius = Quantity.divideBy 2 var.head.radius, subdivisions = 12 })
+                        |> Drawable.translateIn Direction3d.negativeY (Quantity.divideBy 8 var.head.length)
+                    ]
             , torso =
-                pill var.torso.radius var.torso.length
+                Drawable.group
+                    [ pill var.torso.radius var.torso.length
+                    , bodyPart (Shape.sphere { radius = Quantity.multiplyBy 0.5 var.torso.radius, subdivisions = 12 })
+                        |> Drawable.translateIn Direction3d.negativeY (Quantity.multiplyBy 1.1 var.torso.length)
+                    ]
             , abdomen =
                 pill var.abdomen.radius var.abdomen.length
+
+            --                    |> Drawable.rotateAround Axis3d.x (Angle.turns 0.5)
+            --                    |> Drawable.translateIn Direction3d.negativeY var.abdomen.length
+            --                bodyPart (Shape.sphere { radius = var.abdomen.radius, subdivisions = 12 })
             , upperArm =
                 pill var.arm.upper.radius var.arm.upper.length
             , lowerArm =
@@ -111,7 +123,7 @@ init flags =
                 pill var.leg.lower.radius var.leg.lower.length
             , foot =
                 pill var.foot.radius var.foot.length
-                    |> Drawable.translateIn Direction3d.y (Quantity.divideBy 3 var.foot.length)
+                    |> Drawable.translateIn Direction3d.y (Quantity.divideBy 5 var.foot.length)
                     |> Drawable.rotateAround Axis3d.x (Angle.degrees -90)
             }
       }
@@ -164,7 +176,7 @@ viewDancer parts routine time width height =
         viewpoint =
             Viewpoint3d.lookAt
                 { focalPoint = Point3d.meters 0 -0.5 0
-                , eyePoint = Point3d.meters (5 * sin (time / 1000)) 0 4
+                , eyePoint = Point3d.meters (4 * sin (time / 800)) 0 4 --(2 + abs (2 * cos (time / 500)))
                 , upDirection = Direction3d.y
                 }
 
@@ -194,7 +206,7 @@ viewDancer parts routine time width height =
                     ( s, m )
 
         leg joints =
-            Drawable.translateIn Direction3d.negativeY var.abdomen.length <|
+            Drawable.translateIn Direction3d.negativeY (Quantity.multiplyBy 0.7 var.abdomen.length) <|
                 move time step joints.hip <|
                     Drawable.group
                         [ parts.upperLeg
@@ -208,17 +220,19 @@ viewDancer parts routine time width height =
                         ]
 
         arm joints =
-            move time step joints.shoulder <|
-                Drawable.group
-                    [ parts.upperArm
-                    , Drawable.translateIn Direction3d.negativeY var.arm.upper.length <|
-                        move time step joints.elbow <|
-                            Drawable.group
-                                [ parts.lowerArm
-                                , Drawable.translateIn Direction3d.negativeY var.arm.lower.length <|
-                                    move time step joints.wrist parts.hand
-                                ]
-                    ]
+            Drawable.translateIn Direction3d.negativeY (Quantity.divideBy 5 var.arm.upper.length) <|
+                move time step joints.shoulder <|
+                    Drawable.translateIn Direction3d.negativeY (Quantity.divideBy 5 armOffset) <|
+                        Drawable.group
+                            [ parts.upperArm
+                            , Drawable.translateIn Direction3d.negativeY var.arm.upper.length <|
+                                move time step joints.elbow <|
+                                    Drawable.group
+                                        [ parts.lowerArm
+                                        , Drawable.translateIn Direction3d.negativeY var.arm.lower.length <|
+                                            move time step joints.wrist parts.hand
+                                        ]
+                            ]
 
         left =
             Drawable.translateIn Direction3d.negativeX
@@ -255,45 +269,52 @@ pill : Length -> Length -> Drawable a
 pill radius length =
     let
         height =
-            Quantity.minus (Quantity.twice radius) length
+            Quantity.minus radius length
+
+        smallerRadius =
+            Quantity.multiplyBy 0.6 radius
 
         trunk =
-            Shape.cylinder { radius = radius, height = height, subdivisions = 72 }
+            Shape.cylindrical { radius = { top = radius, bottom = smallerRadius, aspect = 0.7 }, height = height, subdivisions = 12 }
 
-        end =
-            Shape.sphere { radius = radius, subdivisions = 72 }
+        endTop =
+            Shape.spheroid { radius = radius, subdivisions = 12, aspect = 0.7 }
+
+        endBottom =
+            Shape.sphere { radius = smallerRadius, subdivisions = 12 }
     in
     Drawable.group
         [ bodyPart trunk
             |> Drawable.translateIn Direction3d.z radius
-        , bodyPart end
+        , bodyPart endTop
             |> Drawable.translateIn Direction3d.z radius
-        , bodyPart end
-            |> Drawable.translateIn Direction3d.z (Quantity.plus radius height)
+
+        --        , bodyPart endBottom
+        --            |> Drawable.translateIn Direction3d.z (Quantity.plus radius height)
         ]
         |> Drawable.rotateAround Axis3d.x (Angle.degrees 90)
 
 
 bodyPart : Mesh a (Mesh.Triangles Mesh.WithNormals uv tangents shadows) -> Drawable a
 bodyPart =
-    Drawable.physical { baseColor = Color.white, roughness = 0.25, metallic = False }
+    Drawable.physical { baseColor = Color.white, roughness = 0.5, metallic = False }
 
 
 armOffset : Length
 armOffset =
-    Quantity.sum [ var.torso.radius, var.arm.upper.radius ]
+    Quantity.sum [ var.torso.radius, Quantity.divideBy 2 var.arm.upper.radius ]
 
 
 legOffset : Length
 legOffset =
-    var.leg.upper.radius
+    Quantity.multiplyBy 1.2 var.leg.upper.radius
 
 
 var =
-    { head = { radius = Length.meters 0.1 }
+    { head = { length = Length.meters 0.25, radius = Length.meters 0.1 }
     , arm =
         { upper = { length = Length.meters 0.3, radius = Length.meters 0.05 }
-        , lower = { length = Length.meters 0.25, radius = Length.meters 0.04 }
+        , lower = { length = Length.meters 0.24, radius = Length.meters 0.04 }
         }
     , hand =
         { length = Length.meters 0.08, radius = Length.meters 0.035 }
@@ -302,9 +323,9 @@ var =
         , lower = { length = Length.meters 0.34, radius = Length.meters 0.05 }
         }
     , foot =
-        { length = Length.meters 0.37, radius = Length.meters 0.06 }
+        { length = Length.meters 0.24, radius = Length.meters 0.05 }
     , torso = { length = Length.meters 0.32, radius = Length.meters 0.15 }
-    , abdomen = { length = Length.meters 0.2, radius = Length.meters 0.15 }
+    , abdomen = { length = Length.meters 0.25, radius = Length.meters 0.13 }
     , movement = Length.meters 0.85
     }
 
@@ -349,27 +370,29 @@ floss =
             [ { steps = [ -10, 10 ], axis = Axis3d.x } ]
         , left =
             { shoulder =
-                [ { steps = [ 10, -10 ], axis = Axis3d.z }
-                , { steps = [ -15, -15, 15 ], axis = Axis3d.x }
+                [ { steps = [ -10, 10 ], axis = Axis3d.z }
+
+                --, { steps = [ -15, -15, 15 ], axis = Axis3d.x }
                 ]
             , elbow =
                 [ { steps = [ 0, -90 ], axis = Axis3d.x }
                 ]
             , wrist = []
-            , hip = [ { steps = [ 5, -5 ], axis = Axis3d.z } ]
+            , hip = [ { steps = [ 15, -5 ], axis = Axis3d.x } ]
             , knee = [ { steps = [ 50, 0 ], axis = Axis3d.x } ]
             , ankle = [ { steps = [ 5, -5 ], axis = Axis3d.x } ]
             }
         , right =
             { shoulder =
                 [ { steps = [ 10, -10 ], axis = Axis3d.z }
-                , { steps = [ -15, -15, 15 ], axis = Axis3d.x }
+
+                --, { steps = [ -15, -15, 15 ], axis = Axis3d.x }
                 ]
             , elbow =
                 [ { steps = [ 0, -90 ], axis = Axis3d.x }
                 ]
             , wrist = []
-            , hip = [ { steps = [ -5, 5 ], axis = Axis3d.z } ]
+            , hip = [ { steps = [ -5, 15 ], axis = Axis3d.x } ]
             , knee = [ { steps = [ 0, 50 ], axis = Axis3d.x } ]
             , ankle = [ { steps = [ -5, 5 ], axis = Axis3d.x } ]
             }
